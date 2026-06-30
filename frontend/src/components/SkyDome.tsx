@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react'
 import type { Location } from '../types'
+import { fetchSky } from '../api'
 
 interface StarPoint {
   hip: number
@@ -142,7 +143,7 @@ function starColor(mag: number): string {
   return '#ffe8c8'
 }
 
-export default function SkyDome({ location: _location, dateTime: _dateTime, onConstellationSelect }: Props) {
+export default function SkyDome({ location, dateTime, onConstellationSelect }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stateRef = useRef({
     azOffset: 0,
@@ -160,7 +161,9 @@ export default function SkyDome({ location: _location, dateTime: _dateTime, onCo
     rafId: 0,
     time: 0,
     highlightedConst: null as string | null,
-    highlightOpacity: 0
+    highlightOpacity: 0,
+    stars: MOCK_STARS as StarPoint[],
+    constellationLines: {} as Record<string, number[][]>
   })
 
   const draw = useCallback(() => {
@@ -216,31 +219,60 @@ export default function SkyDome({ location: _location, dateTime: _dateTime, onCo
 
     // Determine highlighted constellation
     const hc = s.highlightedConst
+    const stars = s.stars
 
-    // Draw constellation lines
-    const starMap = new Map(MOCK_STARS.map((st) => [st.name, st]))
-    for (const line of MOCK_LINES) {
-      const s1 = starMap.get(line.from)
-      const s2 = starMap.get(line.to)
-      if (!s1 || !s2 || s1.alt < 0 || s2.alt < 0) continue
-      const [x1, y1] = azAltToXY(s1.az, s1.alt, centerX, centerY, scale, azOffset)
-      const [x2, y2] = azAltToXY(s2.az, s2.alt, centerX, centerY, scale, azOffset)
+    // Build HIP → canvas coords map for constellation lines
+    const hipMap = new Map<number, [number, number]>()
+    for (const star of stars) {
+      const [x, y] = azAltToXY(star.az, star.alt, centerX, centerY, scale, azOffset)
+      hipMap.set(star.hip, [x, y])
+    }
 
-      const isHighlighted = hc === line.constellation
-      ctx.save()
-      ctx.globalAlpha = isHighlighted ? 0.7 : 0.18
-      ctx.strokeStyle = isHighlighted ? '#818cf8' : '#6b7f9e'
-      ctx.lineWidth = isHighlighted ? 1.2 : 0.7
-      ctx.setLineDash(isHighlighted ? [] : [3, 4])
-      ctx.beginPath()
-      ctx.moveTo(x1, y1)
-      ctx.lineTo(x2, y2)
-      ctx.stroke()
-      ctx.restore()
+    // Draw constellation lines (HIP-pair based from API, fallback to MOCK_LINES)
+    if (Object.keys(s.constellationLines).length > 0) {
+      for (const [iau, pairs] of Object.entries(s.constellationLines)) {
+        const isHighlighted = hc === iau
+        for (const [hip1, hip2] of pairs) {
+          const p1 = hipMap.get(hip1)
+          const p2 = hipMap.get(hip2)
+          if (!p1 || !p2) continue
+          ctx.save()
+          ctx.globalAlpha = isHighlighted ? 0.7 : 0.18
+          ctx.strokeStyle = isHighlighted ? '#818cf8' : '#6b7f9e'
+          ctx.lineWidth = isHighlighted ? 1.2 : 0.7
+          ctx.setLineDash(isHighlighted ? [] : [3, 4])
+          ctx.beginPath()
+          ctx.moveTo(p1[0], p1[1])
+          ctx.lineTo(p2[0], p2[1])
+          ctx.stroke()
+          ctx.restore()
+        }
+      }
+    } else {
+      // Fallback: use MOCK_LINES (name-based) while API data hasn't loaded
+      const starNameMap = new Map(stars.map((st) => [st.name, st]))
+      for (const line of MOCK_LINES) {
+        const s1 = starNameMap.get(line.from)
+        const s2 = starNameMap.get(line.to)
+        if (!s1 || !s2 || s1.alt < 0 || s2.alt < 0) continue
+        const [x1, y1] = azAltToXY(s1.az, s1.alt, centerX, centerY, scale, azOffset)
+        const [x2, y2] = azAltToXY(s2.az, s2.alt, centerX, centerY, scale, azOffset)
+        const isHighlighted = hc === line.constellation
+        ctx.save()
+        ctx.globalAlpha = isHighlighted ? 0.7 : 0.18
+        ctx.strokeStyle = isHighlighted ? '#818cf8' : '#6b7f9e'
+        ctx.lineWidth = isHighlighted ? 1.2 : 0.7
+        ctx.setLineDash(isHighlighted ? [] : [3, 4])
+        ctx.beginPath()
+        ctx.moveTo(x1, y1)
+        ctx.lineTo(x2, y2)
+        ctx.stroke()
+        ctx.restore()
+      }
     }
 
     // Draw named stars
-    for (const star of MOCK_STARS) {
+    for (const star of stars) {
       if (star.alt < 0) continue
       const [x, y] = azAltToXY(star.az, star.alt, centerX, centerY, scale, azOffset)
 
@@ -347,7 +379,7 @@ export default function SkyDome({ location: _location, dateTime: _dateTime, onCo
 
     // Constellation name label on highlight
     if (hc) {
-      const constStars = MOCK_STARS.filter((st) => st.constellation === hc && st.alt > 0)
+      const constStars = stars.filter((st) => st.constellation === hc && st.alt > 0)
       if (constStars.length > 0) {
         let sumX = 0; let sumY = 0
         for (const st of constStars) {
@@ -411,7 +443,7 @@ export default function SkyDome({ location: _location, dateTime: _dateTime, onCo
     function findNearestStar(x: number, y: number): StarPoint | null {
       let best: StarPoint | null = null
       let bestDist = 30 * devicePixelRatio // 30px threshold
-      for (const star of MOCK_STARS) {
+      for (const star of stateRef.current.stars) {
         if (star.alt < 0) continue
         const [sx, sy] = azAltToXY(star.az, star.alt, s.centerX, s.centerY, s.scale, s.azOffset)
         const d = Math.hypot(x - sx, y - sy)
@@ -562,6 +594,18 @@ export default function SkyDome({ location: _location, dateTime: _dateTime, onCo
       canvas.removeEventListener('wheel', onWheel)
     }
   }, [animate, onConstellationSelect])
+
+  // Fetch real sky data whenever location or dateTime changes
+  useEffect(() => {
+    fetchSky(location.lat, location.lon, dateTime)
+      .then(data => {
+        stateRef.current.stars = data.stars
+        stateRef.current.constellationLines = data.constellation_lines as Record<string, number[][]>
+      })
+      .catch(() => {
+        // keep mock data on error
+      })
+  }, [location, dateTime])
 
   return (
     <canvas

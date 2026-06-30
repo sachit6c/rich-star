@@ -77,8 +77,8 @@ export default function App() {
             onConstellationSelect={(iau) => setSelectedConstellation(iau)}
           />
         )}
-        {activeTab === 'forecast' && <Forecast />}
-        {activeTab === 'darkspots' && <DarkSpots />}
+        {activeTab === 'forecast' && <Forecast location={location} />}
+        {activeTab === 'darkspots' && <DarkSpots location={location} />}
         {activeTab === 'settings' && (
           <div className="flex flex-col items-center justify-center h-full gap-3 px-6">
             <p className="font-display text-lg text-slate-300 tracking-widest">Settings</p>
