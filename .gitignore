@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+*.local
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Skyfield data (downloaded at runtime)
+*.bsp
+*.tle
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# VS Code
+.vscode/
+
+# Render / Vercel build outputs
+.vercel/
+.render/
