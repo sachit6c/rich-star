@@ -435,8 +435,8 @@ export default function SkyDome({ location, dateTime, onConstellationSelect }: P
     function getPos(e: MouseEvent | Touch): { x: number; y: number } {
       const rect = canvas!.getBoundingClientRect()
       return {
-        x: (('clientX' in e ? e.clientX : e.clientX) - rect.left) * devicePixelRatio,
-        y: (('clientY' in e ? e.clientY : e.clientY) - rect.top) * devicePixelRatio
+        x: (e.clientX - rect.left) * devicePixelRatio,
+        y: (e.clientY - rect.top) * devicePixelRatio
       }
     }
 
